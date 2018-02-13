@@ -70,6 +70,7 @@ def usage_options():
 
 def display_records(records=[]):
   for i in records:
+    dstamp = ""
     az = ""
     name = ""
     env = ""
@@ -92,8 +93,12 @@ def display_records(records=[]):
         az = i['Placement']['AvailabilityZone']
       except:
         pass
+      try:
+        dstamp = i['LaunchTime']
+      except:
+        pass
 
-    print "{0:5} {1:5} {2:20} {3:15} {0:5} {4:12} {5:20} {6:10}".format(i['id'], env, name, priv, i['InstanceId'], az, pip)
+    print "{0:5} {1:5} {2:20} {3:15} {0:5} {4:12} {5:20} {6:20} {7}".format(i['id'], env, name, priv, i['InstanceId'], az, pip, dstamp)
 
 def ssh(server=None):
   instances = []
