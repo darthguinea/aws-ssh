@@ -1,0 +1,168 @@
+#!/usr/bin/python
+
+import os
+import sys
+import boto3
+import getopt
+import pickle
+import subprocess
+
+def get_server_list(environment=None, search=None):
+  params = {}
+  instances = []
+  if environment:
+    filters = { 'Name': 'tag:Environment', 'Values': [environment] }
+    params = {'Filters': [filters]}
+
+  ec2 = boto3.client("ec2", region_name='ap-southeast-2')
+  reservations = ec2.describe_instances(**params)['Reservations']
+  for reservation in reservations:
+    for instance in reservation['Instances']:
+      if instance['State']['Name'] != 'stopped' or instance['State']['Name'] != 'terminated':
+        instance['Region'] = 'ap-southeast-2'
+        instances.append(instance)
+
+  ec2 = boto3.client("ec2", region_name='us-west-2')
+  reservations = ec2.describe_instances(**params)['Reservations']
+  for reservation in reservations:
+    for instance in reservation['Instances']:
+      if instance['State']['Name'] != 'stopped' or instance['State']['Name'] != 'terminated':
+        instance['Region'] = 'us-west-2'
+        instances.append(instance)
+
+  if search:
+    results = []
+    for i in instances:
+      append = False
+      try:
+        for t in i['Tags']:
+          if t['Key'] == 'Name':
+            if search in t['Value']:
+              append = True
+      except:
+        pass
+
+      if search in i['InstanceId']:
+        append = True
+      if append:
+        results.append(i)
+
+    instances = results
+
+  x = 0
+  results = []
+  for i in instances:
+    i['id'] = x
+    results.append(i)
+    x = x + 1
+
+  display_records(results)
+
+  with open('/tmp/instances.txt', 'w') as fo:
+    pickle.dump(results, fo)
+
+def usage_options():
+  WHITE = '\033[1m'
+  RESET = '\033[0m'
+  print
+  print '{white}po{reset} - SSH to servers with ease'.format(white=WHITE, reset=RESET)
+  print
+
+def display_records(records=[]):
+  for i in records:
+    az = ""
+    name = ""
+    env = ""
+    pip = ""
+    priv = ""
+    for t in i['Tags']:
+      if t['Key'] == 'Name':
+        name = t['Value']
+      if t['Key'] == 'Environment':
+        env = t['Value']
+      try:
+        pip = i['PublicIpAddress']
+      except:
+        pass
+      try:
+        priv = i['PrivateIpAddress']
+      except:
+        pass
+      try:
+        az = i['Placement']['AvailabilityZone']
+      except:
+        pass
+
+    print "{0:5} {1:5} {2:20} {3:15} {0:5} {4:12} {5:20} {6:10}".format(i['id'], env, name, priv, i['InstanceId'], az, pip)
+
+def ssh(server=None):
+  instances = []
+  with open('/tmp/instances.txt', 'r') as fi:
+    instances = pickle.load(fi)
+
+  if server:
+    for i in instances:
+      if server == str(i['id']):
+        name = ""
+        env = ""
+        for t in i['Tags']:
+          if t['Key'] == 'Name':
+            name = t['Value']
+          if t['Key'] == 'Environment':
+            env = t['Value']
+        print "Conneting to " + name + " in environment " + env
+        print '\n'
+        try:
+          subprocess.check_call(["ssh", i['PrivateIpAddress']])
+        except:
+          pass
+  else:
+    display_records(instances)
+  sys.exit(0)
+
+def scp(filename=None, server=None):
+  instances = []
+  with open('/tmp/instances.txt', 'r') as fi:
+    instances = pickle.load(fi)
+
+  if server:
+    for i in instances:
+      if server == str(i['id']):
+        name = ""
+        env = ""
+        for t in i['Tags']:
+          if t['Key'] == 'Name':
+            name = t['Value']
+          if t['Key'] == 'Environment':
+            env = t['Value']
+        print "Conneting to " + name + " in environment " + env
+        print '\n'
+        try:
+          subprocess.check_call(["scp", filename, '{0}:~/.'.format(i['PrivateIpAddress'])])
+        except:
+          pass
+  sys.exit(0)
+
+def main(argv):
+  try:
+    opts, args = getopt.getopt(argv, "?", ["help"])
+  except:
+    usage_options()
+
+  # TODO: Implement user flags
+
+  params = {}
+  if len(argv) == 0:
+    ssh()
+  elif len(argv) == 1 and argv[0].isdigit():
+    ssh(argv[0])
+  elif len(argv) == 1:
+    params = { 'search': argv[0] }
+  elif len(argv) == 2 and os.path.isfile(argv[0]):
+    scp(argv[0], argv[1])
+  elif len(argv) == 2:
+    params = { 'environment': argv[1], 'search': argv[0] }
+  get_server_list(**params)
+
+if __name__ == "__main__":
+  main(sys.argv[1:])
